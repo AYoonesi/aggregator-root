@@ -1,0 +1,6 @@
+{
+  "name": "Alireza Yoonesi | Minimalist Portfolio & Feed Aggregator",
+  "description": "Minimalist landing page, resume, and multi-source RSS writing aggregator for Alireza Yoonesi (علیرضا یونسی).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
