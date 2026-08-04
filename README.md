@@ -168,3 +168,9 @@ If you have a Linux VPS:
    pm2 start npm --name "ayoonesi-app" -- start
    ```
 4. Point Nginx reverse proxy to `http://localhost:3000` for domain `ayoonesi.ir` and enable SSL with Let's Encrypt Certbot.
+
+
+----
+
+
+Totally frustrated!
