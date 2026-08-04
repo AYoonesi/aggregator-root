@@ -17,6 +17,16 @@ export default function App() {
   const loadPosts = async (forceRefresh = false) => {
     setLoading(true);
     setError(null);
+
+    const useStaticFallback = typeof window === 'undefined' || !['localhost', '127.0.0.1'].includes(window.location.hostname);
+
+    if (useStaticFallback) {
+      setPosts(INITIAL_FALLBACK_POSTS);
+      setLastUpdated(new Date().toISOString());
+      setLoading(false);
+      return;
+    }
+
     try {
       const endpoint = forceRefresh ? '/api/posts/refresh' : '/api/posts';
       const res = await fetch(endpoint, {
@@ -33,7 +43,7 @@ export default function App() {
           return;
         }
       }
-      
+
       // Fallback if backend returned empty array or offline
       setPosts(INITIAL_FALLBACK_POSTS);
       setLastUpdated(new Date().toISOString());
