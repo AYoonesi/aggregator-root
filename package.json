@@ -1,16 +1,17 @@
 {
-  "name": "react-example",
+  "name": "aggregator-root",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx server.ts",
+    "dev": "vite",
     "build": "vite build",
     "build:server": "esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "preview": "vite preview",
-    "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "clean": "rimraf dist server.js",
+    "lint": "tsc --noEmit",
+    "pages:dev": "wrangler pages dev dist --no-browse"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -31,6 +32,7 @@
     "esbuild": "^0.25.0",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
+    "rimraf": "^5.0.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.3",
     "wrangler": "^4.118.0"
