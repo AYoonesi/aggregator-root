@@ -1,29 +1,34 @@
+import { fetchFeeds } from '../src/lib/fetchFeeds.js';
+
 export async function onRequest(context: any) {
-  const { request, env, params } = context;
+  const { request, env } = context;
   const url = new URL(request.url);
 
-  if (url.pathname === '/api/posts') {
-    return new Response(JSON.stringify({
-      success: true,
-      count: 0,
-      lastUpdated: new Date().toISOString(),
-      posts: []
-    }), {
-      headers: { 'content-type': 'application/json; charset=utf-8' },
-      status: 200
-    });
-  }
-
-  if (url.pathname === '/api/posts/refresh') {
-    return new Response(JSON.stringify({
-      success: true,
-      count: 0,
-      lastUpdated: new Date().toISOString(),
-      posts: []
-    }), {
-      headers: { 'content-type': 'application/json; charset=utf-8' },
-      status: 200
-    });
+  if (url.pathname === '/api/posts' || url.pathname === '/api/posts/refresh') {
+    try {
+      const posts = await fetchFeeds();
+      return new Response(JSON.stringify({
+        success: true,
+        count: posts.length,
+        lastUpdated: new Date().toISOString(),
+        posts
+      }), {
+        headers: { 'content-type': 'application/json; charset=utf-8' },
+        status: 200
+      });
+    } catch (err: any) {
+      console.warn('[onRequest] fetchFeeds failed:', err);
+      return new Response(JSON.stringify({
+        success: false,
+        count: 0,
+        lastUpdated: new Date().toISOString(),
+        posts: [],
+        error: err?.message || 'Failed to fetch RSS feeds'
+      }), {
+        headers: { 'content-type': 'application/json; charset=utf-8' },
+        status: 500
+      });
+    }
   }
 
   if (url.pathname === '/robots.txt') {

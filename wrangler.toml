@@ -1,6 +1,8 @@
 name = "aggregator-root"
 compatibility_date = "2026-08-04"
+compatibility_flags = ["nodejs_compat"]
 functions = "./functions"
+main = "workers-site/index.js"
 
 [site]
 bucket = "./dist"

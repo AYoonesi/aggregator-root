@@ -1,12 +1,13 @@
-import Parser from 'rss-parser';
+import { XMLParser } from 'fast-xml-parser';
 import { SITE_CONFIG } from '../config.js';
 
-const parser = new Parser({
-  timeout: 8000,
-  headers: {
-    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'application/rss+xml, application/xml, text/xml, */*'
-  }
+const parser = new XMLParser({
+  ignoreAttributes: false,
+  attributeNamePrefix: '',
+  textNodeName: 'text',
+  trimValues: true,
+  parseTagValue: false,
+  arrayMode: (tagName) => ['item', 'entry', 'link', 'category'].includes(tagName)
 });
 
 export const FEED_SOURCES = SITE_CONFIG.rssFeeds;
@@ -92,32 +93,105 @@ function calculateReadingTime(rawContent, title = '') {
   return { minutes, text: `${minutes} min read` };
 }
 
+function safeText(value) {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (typeof value === 'object') {
+    if ('text' in value && value.text != null) return String(value.text);
+    if ('#text' in value && value['#text'] != null) return String(value['#text']);
+    if ('_text' in value && value['_text'] != null) return String(value['_text']);
+    if ('cdata' in value && value.cdata != null) return String(value.cdata);
+    if ('@_href' in value && value['@_href']) return String(value['@_href']);
+    if ('href' in value && value.href) return String(value.href);
+    if ('url' in value && value.url) return String(value.url);
+    const nested = Object.values(value).find((entry) => typeof entry === 'string' && entry.trim());
+    return nested ? String(nested) : '';
+  }
+  return '';
+}
+
+function ensureArray(value) {
+  if (Array.isArray(value)) return value;
+  if (value === undefined || value === null) return [];
+  return [value];
+}
+
+function getLink(item) {
+  const linkValue = item.link || item.links;
+  if (!linkValue) return '';
+
+  if (typeof linkValue === 'string') return linkValue.trim();
+  if (Array.isArray(linkValue)) {
+    for (const entry of linkValue) {
+      const href = safeText(entry.href || entry['@_href'] || entry.text || entry['#text']);
+      if (href) return href.trim();
+    }
+    return safeText(linkValue[0]).trim();
+  }
+
+  return safeText(linkValue).trim();
+}
+
+function getCreator(item) {
+  return safeText(item['dc:creator'] || item.creator || item.author || item['author:name'] || item['author:text']);
+}
+
+function getContent(item) {
+  return safeText(
+    item['content:encoded'] ||
+      item.content ||
+      item.description ||
+      item.summary ||
+      item['encoded'] ||
+      item['content']
+  );
+}
+
+function getPostedDate(item) {
+  return safeText(item.pubDate || item.published || item.updated || item['dc:date'] || item.date || item['published:date']);
+}
+
 export async function fetchFeeds() {
   const feedPromises = FEED_SOURCES.map(async (source) => {
     try {
-      const feed = await parser.parseURL(source.url);
-      if (!feed || !feed.items) return [];
+      const response = await fetch(source.url, {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          Accept: 'application/rss+xml, application/xml, text/xml, */*'
+        }
+      });
 
-      return feed.items.map((item, index) => {
-        const rawDate = item.isoDate || item.pubDate || item.date || new Date().toISOString();
+      if (!response.ok) {
+        console.warn(`[fetchFeeds] Feed fetch failed for ${source.label} (${source.url}): ${response.status} ${response.statusText}`);
+        return [];
+      }
+
+      const text = await response.text();
+      const feedData = parser.parse(text);
+      const channel = feedData.rss?.channel || feedData.feed || feedData;
+      const items = ensureArray(channel?.item || channel?.entry || channel?.items || []);
+
+      return items.map((item, index) => {
+        const titleText = cleanText(safeText(item.title) || safeText(item['title']));
+        const link = getLink(item) || source.url;
+        const rawDate = getPostedDate(item) || new Date().toISOString();
         const parsedDate = new Date(rawDate);
         const validDate = isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
-
         const formattedDate = validDate.toLocaleDateString('en-US', {
           year: 'numeric',
           month: 'short',
           day: 'numeric'
         });
-
-        const fullRawContent = item['content:encoded'] || item.content || item.summary || item.contentSnippet || '';
+        const fullRawContent = getContent(item);
         const snippet = cleanText(fullRawContent).slice(0, 220);
-        const titleText = cleanText(item.title) || 'Untitled Post';
         const readingTime = calculateReadingTime(fullRawContent, titleText);
 
         return {
-          id: item.guid || item.id || `${source.category}-${index}-${validDate.getTime()}`,
-          title: titleText,
-          link: item.link || item.guid || source.url,
+          id: safeText(item.guid || item.id || `${source.category}-${index}-${validDate.getTime()}`),
+          title: titleText || 'Untitled Post',
+          link,
           date: validDate.toISOString(),
           pubDate: formattedDate,
           timestamp: validDate.getTime(),
@@ -125,13 +199,13 @@ export async function fetchFeeds() {
           sourceUrl: source.url,
           category: source.category,
           snippet: snippet ? `${snippet}...` : '',
-          creator: item.creator || item['dc:creator'] || '',
+          creator: getCreator(item),
           readingTimeMinutes: readingTime.minutes,
           readingTimeText: readingTime.text
         };
       });
     } catch (err) {
-      console.warn(`[fetchFeeds] Failed to fetch feed from ${source.label} (${source.url}):`, err.message);
+      console.warn(`[fetchFeeds] Failed to fetch feed from ${source.label} (${source.url}):`, err?.message || err);
       return [];
     }
   });
@@ -145,25 +219,22 @@ export async function fetchFeeds() {
     }
   });
 
-  // If live RSS feeds returned 0 items (e.g. due to feed network timeouts or offline environments), combine with fallback posts
   let combinedPosts = allItems;
   if (combinedPosts.length === 0) {
-    combinedPosts = FALLBACK_POSTS.map(post => ({
+    combinedPosts = FALLBACK_POSTS.map((post) => ({
       ...post,
       timestamp: new Date(post.date).getTime()
     }));
   } else {
-    // Deduplicate by title/link if multiple feeds mirror the same article
     const seenLinks = new Set();
-    combinedPosts = combinedPosts.filter(item => {
-      const key = (item.link || item.title).toLowerCase();
+    combinedPosts = combinedPosts.filter((item) => {
+      const key = (item.link || item.title || '').toLowerCase();
       if (seenLinks.has(key)) return false;
       seenLinks.add(key);
       return true;
     });
   }
 
-  // Sort by date (newest first)
   combinedPosts.sort((a, b) => b.timestamp - a.timestamp);
 
   return combinedPosts;
