@@ -4,7 +4,7 @@ node_modules/
 
 # Production & Build outputs
 build/
-dist/
+# dist/
 *.tsbuildinfo
 
 # Environment variables
